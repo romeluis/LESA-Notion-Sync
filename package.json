@@ -1,0 +1,19 @@
+{
+  "name": "lesa-notion-sync",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node main.js",
+    "start:dev": "nodemon main.js"
+  },
+  "author": "Romel Luis Faife Cruz",
+  "license": "ISC",
+  "dependencies": {
+    "@notionhq/client": "^4.0.1",
+    "cron": "^4.3.2",
+    "mysql": "^2.18.1"
+  }
+}
