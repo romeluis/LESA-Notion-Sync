@@ -2,9 +2,10 @@
 process.env.UNDICI_DISABLE_WASM = "1";
 
 import { CronJob } from "cron";
-import { synthesizeEvents } from "./notion.js";
+import { printNotionContents, synthesizeEvents } from "./notion.js";
 import { syncEvents } from "./database.js";
 
+printNotionContents()
 /**
  * Runs one full sync: fetch from Notion, then upsert into MySQL.
  */
