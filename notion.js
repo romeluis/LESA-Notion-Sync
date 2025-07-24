@@ -55,87 +55,104 @@ export async function synthesizeEvents() {
     } while (cursor);
 
     console.log(`✨ Retrieved ${allPages.length} pages from Notion:`);
-    allPages.forEach((page, i) => {
-      //Create event object
-      if (page.properties['Event Status'].status.name !== 'Event Cancelled') {
-        var id = page.properties.id.unique_id.number
-        var name = page.properties['Event Name'].title[0].text.content
-        var emoji = page.icon.emoji
+    allPages.forEach(page => {
+  // 1️⃣ Skip cancelled:
+  const statusName = page.properties['Event Status'].status?.name;
+  if (statusName === 'Event Cancelled') return;
 
-        var description = 'NONE'
-        if (page.properties['Event Description'].rich_text.length !== 0) {
-          description = page.properties['Event Description'].rich_text[0].text.content
-        }
+  // 2️⃣ ID (unique_id → number)
+  const id = page.properties.id.unique_id.number;
 
-        var location = 'TBA'
-        if (page.properties['Location'].rich_text.length !== 0) {
-          location = page.properties['Location'].rich_text[0].text.content
-        }
+  // 3️⃣ Name (title → plain_text)
+  const name = page.properties['Event Name']
+    .title[0]?.plain_text ?? 'NO NAME';
 
-        var type = page.properties['Organizer'].select.name
-        var organization = null
-        if (page.properties['Organization'].rich_text.length != 0) {
-          organization = page.properties['Organization'].rich_text[0].text.content
-        }
+  // 4️⃣ Emoji (icon → emoji)
+  const emoji = page.icon?.emoji ?? '';
 
-        var day = null
-        var month = null
-        var year = null
-        var startHour = null
-        var startMinute = null
-        var endHour = null
-        var endMinute = null
-        // 🗓️ Parse Notion ‘Event Date & Time’ into your numeric fields
-        const dateProp = page.properties['Event Date & Time'].date;
-        if (dateProp) {
-          const start = new Date(dateProp.start);
-          // Notion returns `end: null` if there’s no end date
-          const end   = dateProp.end ? new Date(dateProp.end) : null;
+  // 5️⃣ Description (rich_text → plain_text)
+  const description = page.properties['Event Description']
+    .rich_text[0]?.plain_text ?? 'NONE';
 
-          // 1 & 3. Different-day or no-end-date → day=0, month/year from start, times=0
-          if (!end || start.toDateString() !== end.toDateString()) {
-            day         = 0;
-            month       = start.getMonth() + 1;     // JS months are 0–11
-            year        = start.getFullYear();
-            startHour   = 0;
-            startMinute = 0;
-            endHour     = 0;
-            endMinute   = 0;
-          } else {
-            // 2. Same day, different times → pull actual date + 24h times
-            day         = start.getDate();
-            month       = start.getMonth() + 1;
-            year        = start.getFullYear();
-            startHour   = start.getHours();
-            startMinute = start.getMinutes();
-            endHour     = end.getHours();
-            endMinute   = end.getMinutes();
-          }
-        } else {
-          // No date prop at all—optional fallback
-          day = month = year = startHour = startMinute = endHour = endMinute = 0;
-        }
+  // 6️⃣ Location (rich_text → plain_text)
+  const location = page.properties.Location
+    .rich_text[0]?.plain_text ?? 'TBA';
 
+  // 7️⃣ Organizer (select → name)
+  const type = page.properties.Organizer
+    .select?.name ?? '';
 
-        var price = page.properties['Cost'].number
-        var link = '0'
-        if (page.properties['Requires Registration'].checkbox) {
-          if (page.properties['Registration Form'].url !== null) {
-            link = page.properties['Registration Form'].url
-          } else {
-            link = '1'
-          }
-        }
-        var calendarLink = 'NONE'
-        if (page.properties['Calendar Invite Link'].url !== null) {
-          calendarLink = page.properties['Calendar Invite Link'].url
-        }
-        var isCpsifFunded = page.properties['Is CPSIF Funded'].checkbox
+  // 8️⃣ Organization (rich_text → plain_text)
+  const organization = page.properties.Organization
+    .rich_text[0]?.plain_text ?? null;
 
-        const event = new Event(id, name, emoji, description, location, type, organization, day, month, year, startHour, startMinute, endHour, endMinute, price, link, calendarLink, isCpsifFunded)
-        allEvents.push(event)
-      }
-    });
+  // 9️⃣ Cost (number)
+  const price = page.properties.Cost.number ?? 0;
+
+  // 🔟 Requires Registration & Registration Form (checkbox + url)
+  const requiresReg = page.properties['Requires Registration'].checkbox;
+  const regUrl = page.properties['Registration Form'].url;
+  const link = requiresReg
+    ? (regUrl ?? '1')
+    : '0';
+
+  // 1️⃣1️⃣ Calendar Invite Link (url)
+  const calendarLink = page.properties['Calendar Invite Link'].url ?? 'NONE';
+
+  // 1️⃣2️⃣ CPSIF Funded (checkbox)
+  const isCpsifFunded = page.properties['Is CPSIF Funded'].checkbox;
+
+  // 1️⃣3️⃣ Event Date & Time parsing
+  const dateProp = page.properties['Event Date & Time'].date;
+  let day, month, year, startHour, startMinute, endHour, endMinute;
+  if (dateProp) {
+    const start = new Date(dateProp.start);
+    const end   = dateProp.end ? new Date(dateProp.end) : null;
+    const sameDay = end && start.toDateString() === end.toDateString();
+
+    if (!end || !sameDay) {
+      day = 0;
+      month = start.getMonth() + 1;
+      year = start.getFullYear();
+      startHour = startMinute = endHour = endMinute = 0;
+    } else {
+      day = start.getDate();
+      month = start.getMonth() + 1;
+      year = start.getFullYear();
+      startHour = start.getHours();
+      startMinute = start.getMinutes();
+      endHour = end.getHours();
+      endMinute = end.getMinutes();
+    }
+  } else {
+    day = month = year = startHour = startMinute = endHour = endMinute = 0;
+  }
+
+  // 1️⃣4️⃣ Build your Event
+  const event = new Event({
+    id,
+    name,
+    emoji,
+    description,
+    location,
+    type,
+    organization,
+    day,
+    month,
+    year,
+    startHour,
+    startMinute,
+    endHour,
+    endMinute,
+    price,
+    link,
+    calendarLink,
+    isCpsifFunded,
+  });
+
+  allEvents.push(event);
+});
+
     return allEvents;
   } catch (error) {
     console.error("🔥 Error fetching from Notion:", error);
