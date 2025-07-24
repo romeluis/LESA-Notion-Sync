@@ -18,7 +18,7 @@ export async function printNotionContents() {
       const response = await notion.databases.query({
         database_id: databaseId,
         start_cursor: cursor,
-        page_size: 100
+        page_size: 30
       });
       allPages = allPages.concat(response.results);
       cursor = response.has_more ? response.next_cursor : undefined;

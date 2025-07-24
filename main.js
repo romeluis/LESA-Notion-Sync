@@ -1,4 +1,6 @@
 // main.js
+process.env.UNDICI_DISABLE_WASM = "1";
+
 import { CronJob } from "cron";
 import { synthesizeEvents } from "./notion.js";
 import { syncEvents } from "./database.js";
