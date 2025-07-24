@@ -3,8 +3,6 @@ import { Client } from "@notionhq/client";
 import { Event } from "./event.js";
 
 // 🔑 Make sure NOTION_TOKEN and NOTION_DB_ID are set as env vars on your server
-console.log("Code:" + process.env.NOTION_TOKEN)
-console.log("Code:" + process.env.NOTION_DB_ID)
 const notion = new Client({ auth: process.env.NOTION_TOKEN });
 const databaseId = process.env.NOTION_DB_ID;
 
