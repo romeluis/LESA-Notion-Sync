@@ -2,11 +2,11 @@ import mysql from "mysql2/promise";
 
 // Create a pool once at app startup
 export const pool = mysql.createPool({
-  host:            "localhost", // your host
+  host:            "server342.web-hosting.com", // your host
   port:            3306,
   user:            process.env.SQL_USER,
   password:        process.env.SQL_PASS,
-  database:        "upgrnthc_db",
+  database:        "lesaueqw_lesadb",
   charset:         "utf8mb4",
   waitForConnections: true,
   connectionLimit: 10,
