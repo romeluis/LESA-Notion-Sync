@@ -1,9 +1,10 @@
 // notion.js
 import { Client } from "@notionhq/client";
 import { Event } from "./event.js";
+import fetch from "node-fetch";  
 
 // 🔑 Make sure NOTION_TOKEN and NOTION_DB_ID are set as env vars on your server
-const notion = new Client({ auth: process.env.NOTION_TOKEN });
+const notion = new Client({ auth: process.env.NOTION_TOKEN, fetch });
 const databaseId = process.env.NOTION_DB_ID;
 
 /**

@@ -27,7 +27,7 @@ export async function syncEvents(allEvents) {
 
     for (const e of allEvents) {
       await query(
-        `INSERT INTO records (
+        `INSERT INTO events (
           id, name, emoji, description, location, type, organization,
           day, month, year,
           startHour, startMinute, endHour, endMinute,
