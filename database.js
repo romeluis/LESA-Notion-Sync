@@ -1,19 +1,31 @@
-import mysql from "mysql";
-import util from "util";
+import mysql from "mysql2/promise";
 
-const SQL_USER = process.env.SQL_USER;
-const SQL_PASS = process.env.SQL_PASS;
+// Create a pool once at app startup
+export const pool = mysql.createPool({
+  host:            "server342.web-hosting.com", // your host
+  port:            3306,
+  user:            process.env.SQL_USER,
+  password:        process.env.SQL_PASS,
+  database:        "upgrnthc_db",
+  charset:         "utf8mb4",
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit:      0,
 
-export const database = mysql.createConnection({
-    host: "server342.web-hosting.com",
-    port: "3306",
-    database: "upgrnthc_db",
-    charset : 'utf8mb4',
-    user: SQL_USER,
-    password: SQL_PASS
+  // 👇 Tune your timeouts
+  connectTimeout:  20000, // 20s to establish TCP+Auth handshake
+  // handshakeTimeout is not directly exposed, but mysql2 uses connectTimeout
+
+  // Optional keep-alive settings
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0,
 });
 
-const query = util.promisify(database.query).bind(database);
+// Helper: run parametrized queries easily
+export async function query(sql, params) {
+  const [rows] = await pool.execute(sql, params);
+  return rows;
+}
 
 /**
  * Syncs an array of Event instances with your SQL table.
