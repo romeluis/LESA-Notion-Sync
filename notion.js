@@ -453,6 +453,24 @@ function formatDateForNotion(date) {
 }
 
 /**
+ * Helper function to normalize dates for comparison (ignores seconds)
+ */
+function normalizeDateForComparison(dateString) {
+  if (!dateString) return "";
+  
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "";
+    
+    // Set seconds and milliseconds to 0 for comparison
+    date.setSeconds(0, 0);
+    return date.toISOString();
+  } catch (error) {
+    return "";
+  }
+}
+
+/**
  * Helper function to check if a member needs updating in Notion
  */
 function checkIfMemberNeedsUpdate(mysqlMember, notionPage) {
@@ -490,7 +508,7 @@ function checkIfMemberNeedsUpdate(mysqlMember, notionPage) {
     program: getRichTextContent(props["Program"]) !== (mysqlMember.program || ""),
     yearOfStudy: getSelectName(props["Year of Study"]) !== (mysqlMember.year_of_study || ""),
     nationality: getRichTextContent(props["Nationality"]) !== (mysqlMember.country || ""),
-    registrationDate: getDateString(props["Date of Registration"]) !== (formatDateForNotion(mysqlMember.registration_date) || "")
+    registrationDate: normalizeDateForComparison(getDateString(props["Date of Registration"])) !== normalizeDateForComparison(formatDateForNotion(mysqlMember.registration_date) || "")
   };
   
   // Handle last_update comparison with fallback to registration_date
@@ -498,7 +516,7 @@ function checkIfMemberNeedsUpdate(mysqlMember, notionPage) {
   if (!expectedLastUpdate) {
     expectedLastUpdate = formatDateForNotion(mysqlMember.registration_date) || "";
   }
-  fieldChecks.lastUpdate = getDateString(props["Last Update"]) !== expectedLastUpdate;
+  fieldChecks.lastUpdate = normalizeDateForComparison(getDateString(props["Last Update"])) !== normalizeDateForComparison(expectedLastUpdate);
   
   // Check if any field needs updating
   const needsUpdate = Object.values(fieldChecks).some(check => check);
@@ -551,12 +569,12 @@ function checkIfMemberNeedsUpdate(mysqlMember, notionPage) {
             mysqlValue = mysqlMember.country || "";
             break;
           case 'registrationDate':
-            notionValue = getDateString(props["Date of Registration"]);
-            mysqlValue = formatDateForNotion(mysqlMember.registration_date) || "";
+            notionValue = normalizeDateForComparison(getDateString(props["Date of Registration"]));
+            mysqlValue = normalizeDateForComparison(formatDateForNotion(mysqlMember.registration_date) || "");
             break;
           case 'lastUpdate':
-            notionValue = getDateString(props["Last Update"]);
-            mysqlValue = expectedLastUpdate;
+            notionValue = normalizeDateForComparison(getDateString(props["Last Update"]));
+            mysqlValue = normalizeDateForComparison(expectedLastUpdate);
             break;
         }
         console.log(`   ${field}: Notion="${notionValue}" vs MySQL="${mysqlValue}"`);
