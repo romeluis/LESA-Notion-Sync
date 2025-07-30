@@ -254,9 +254,9 @@ export async function syncMembers() {
  */
 async function insertMemberToNotion(member) {
   try {
-    console.log(`🔍 Processing member ${member.id} (Student ID: ${member.student_number}): ${member.given_name} ${member.surname_name}`);
-    console.log(`📅 Registration date: ${member.registration_date}`);
-    console.log(`📅 Last update: ${member.last_update}`);
+    // console.log(`🔍 Processing member ${member.id} (Student ID: ${member.student_number}): ${member.given_name} ${member.surname_name}`);
+    // console.log(`📅 Registration date: ${member.registration_date}`);
+    // console.log(`📅 Last update: ${member.last_update}`);
     
     const properties = buildNotionMemberProperties(member);
     
@@ -387,7 +387,7 @@ function buildNotionMemberProperties(member) {
   // For last_update, use registration_date if last_update is invalid/0
   let lastUpdateDate = formatDateForNotion(member.last_update);
   if (!lastUpdateDate && registrationDate) {
-    console.log(`Using registration date for last_update for member ${member.id}`);
+    // console.log(`Using registration date for last_update for member ${member.id}`);
     lastUpdateDate = registrationDate;
   }
   
@@ -418,10 +418,14 @@ function formatDateForNotion(date) {
   // Handle various date formats that might come from MySQL
   let dateObj;
   if (date instanceof Date) {
+    // If it's already a Date object, check if it's valid first
+    if (isNaN(date.getTime())) {
+      return null; // Don't log warning for already invalid Date objects
+    }
     dateObj = date;
   } else if (typeof date === 'string') {
     // Handle special cases like "0000-00-00 00:00:00" from MySQL
-    if (date.startsWith('0000-00-00') || date === '0') {
+    if (date.startsWith('0000-00-00') || date === '0' || date.trim() === '') {
       return null;
     }
     dateObj = new Date(date);
@@ -437,7 +441,10 @@ function formatDateForNotion(date) {
   }
   
   if (isNaN(dateObj.getTime())) {
-    console.warn(`Invalid date format: ${date}`);
+    // Only log warning if the original input wasn't already an invalid Date
+    if (!(date instanceof Date)) {
+      console.warn(`Invalid date format: ${date}`);
+    }
     return null;
   }
   
@@ -471,13 +478,13 @@ function checkIfMemberNeedsUpdate(mysqlMember, notionPage) {
   
   const props = notionPage.properties;
   
-  // Compare each field
+  // Compare each field (excluding Id since we use Student ID as unique identifier)
   const checks = [
     getTitleContent(props["First Name"]) !== (mysqlMember.given_name || ""),
     getRichTextContent(props["Last Name"]) !== (mysqlMember.surname_name || ""),
     getRichTextContent(props["Preferred Name"]) !== (mysqlMember.preferred_name || ""),
     (props["UofT Email"]?.email || "") !== (mysqlMember.uoft_email || ""),
-    (props["Student ID"]?.number || 0) !== (mysqlMember.student_number || 0),
+    // Note: We don't compare Student ID since it's our lookup key and should match
     getSelectName(props["Student Status"]) !== (mysqlMember.student_status || ""),
     getSelectName(props["Faculty"]) !== (mysqlMember.faculty || ""),
     getSelectName(props["College/Campus"]) !== (mysqlMember.college || ""),
