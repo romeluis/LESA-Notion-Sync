@@ -254,6 +254,10 @@ export async function syncMembers() {
  */
 async function insertMemberToNotion(member) {
   try {
+    console.log(`🔍 Processing member ${member.id}: ${member.given_name} ${member.surname_name}`);
+    console.log(`📅 Registration date: ${member.registration_date}`);
+    console.log(`📅 Last update: ${member.last_update}`);
+    
     const properties = buildNotionMemberProperties(member);
     
     await notion.pages.create({
@@ -296,7 +300,7 @@ async function updateMemberInNotion(member, existingPage) {
  * Helper function to build Notion properties object from MySQL member data
  */
 function buildNotionMemberProperties(member) {
-  return {
+  const properties = {
     "Id": {
       number: member.id
     },
@@ -330,21 +334,21 @@ function buildNotionMemberProperties(member) {
         }
       ] : []
     },
-    "UofT Email": {
-      email: member.uoft_email || null
-    },
+    "UofT Email": member.uoft_email ? {
+      email: member.uoft_email
+    } : undefined,
     "Student ID": {
       number: member.student_number
     },
-    "Student Status": {
-      select: member.student_status ? { name: member.student_status } : null
-    },
-    "Faculty": {
-      select: member.faculty ? { name: member.faculty } : null
-    },
-    "College/Campus": {
-      select: member.college ? { name: member.college } : null
-    },
+    "Student Status": member.student_status ? {
+      select: { name: member.student_status }
+    } : undefined,
+    "Faculty": member.faculty ? {
+      select: { name: member.faculty }
+    } : undefined,
+    "College/Campus": member.college ? {
+      select: { name: member.college }
+    } : undefined,
     "Program": {
       rich_text: member.program ? [
         {
@@ -355,9 +359,9 @@ function buildNotionMemberProperties(member) {
         }
       ] : []
     },
-    "Year of Study": {
-      select: member.year_of_study ? { name: member.year_of_study } : null
-    },
+    "Year of Study": member.year_of_study ? {
+      select: { name: member.year_of_study }
+    } : undefined,
     "Nationality": {
       rich_text: member.country ? [
         {
@@ -367,18 +371,36 @@ function buildNotionMemberProperties(member) {
           }
         }
       ] : []
-    },
-    "Date of Registration": {
-      date: member.registration_date ? {
-        start: formatDateForNotion(member.registration_date)
-      } : null
-    },
-    "Last Update": {
-      date: member.last_update ? {
-        start: formatDateForNotion(member.last_update)
-      } : null
     }
   };
+
+  // Only add date properties if they have valid values
+  const registrationDate = formatDateForNotion(member.registration_date);
+  if (registrationDate) {
+    properties["Date of Registration"] = {
+      date: {
+        start: registrationDate
+      }
+    };
+  }
+
+  const lastUpdateDate = formatDateForNotion(member.last_update);
+  if (lastUpdateDate) {
+    properties["Last Update"] = {
+      date: {
+        start: lastUpdateDate
+      }
+    };
+  }
+
+  // Remove undefined properties
+  Object.keys(properties).forEach(key => {
+    if (properties[key] === undefined) {
+      delete properties[key];
+    }
+  });
+
+  return properties;
 }
 
 /**
@@ -387,14 +409,23 @@ function buildNotionMemberProperties(member) {
 function formatDateForNotion(date) {
   if (!date) return null;
   
-  const dateObj = new Date(date);
+  // Handle various date formats that might come from MySQL
+  let dateObj;
+  if (date instanceof Date) {
+    dateObj = date;
+  } else if (typeof date === 'string') {
+    dateObj = new Date(date);
+  } else {
+    console.warn(`Unexpected date type: ${typeof date}, value: ${date}`);
+    return null;
+  }
+  
   if (isNaN(dateObj.getTime())) {
     console.warn(`Invalid date format: ${date}`);
     return null;
   }
   
-  // For registration_date, use just the date part
-  // For last_update, use full ISO string 
+  // Return full ISO string for Notion
   return dateObj.toISOString();
 }
 
@@ -432,8 +463,8 @@ function checkIfMemberNeedsUpdate(mysqlMember, notionPage) {
     getRichTextContent(props["Program"]) !== (mysqlMember.program || ""),
     getSelectName(props["Year of Study"]) !== (mysqlMember.year_of_study || ""),
     getRichTextContent(props["Nationality"]) !== (mysqlMember.country || ""),
-    getDateString(props["Date of Registration"]) !== (mysqlMember.registration_date ? formatDateForNotion(mysqlMember.registration_date) : ""),
-    getDateString(props["Last Update"]) !== (mysqlMember.last_update ? formatDateForNotion(mysqlMember.last_update) : "")
+    getDateString(props["Date of Registration"]) !== (formatDateForNotion(mysqlMember.registration_date) || ""),
+    getDateString(props["Last Update"]) !== (formatDateForNotion(mysqlMember.last_update) || "")
   ];
   
   return checks.some(check => check);
