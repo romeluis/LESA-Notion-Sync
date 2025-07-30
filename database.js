@@ -91,3 +91,26 @@ export async function syncEvents(allEvents) {
     console.error("🔥 Error syncing events:", err);
   }
 }
+
+/**
+ * Gets all members from the MySQL database
+ * @returns {Promise<Array>} Array of member objects
+ */
+export async function getAllMembers() {
+  try {
+    const members = await query(
+      `SELECT 
+        id, given_name, surname_name, preferred_name, uoft_email, 
+        student_number, student_status, faculty, college, program, 
+        year_of_study, country, registration_date, last_update
+      FROM members 
+      ORDER BY id`
+    );
+    
+    console.log(`📊 Retrieved ${members.length} members from MySQL`);
+    return members;
+  } catch (err) {
+    console.error("🔥 Error fetching members from MySQL:", err);
+    throw err;
+  }
+}

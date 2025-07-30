@@ -2,7 +2,7 @@
 process.env.UNDICI_DISABLE_WASM = "1";
 
 import { CronJob } from "cron";
-import { synthesizeEvents } from "./notion.js";
+import { synthesizeEvents, syncMembers } from "./notion.js";
 import { syncEvents } from "./database.js";
 
 /**
@@ -10,9 +10,16 @@ import { syncEvents } from "./database.js";
  */
 async function runSync() {
   console.log("🚀 Starting Notion → SQL sync…");
+  
+  // Sync events
   const events = await synthesizeEvents();
   console.log(`🗂️  Got ${events.length} events, now syncing…`);
   await syncEvents(events);
+  
+  // Sync members
+  console.log("🔄 Now syncing members…");
+  await syncMembers();
+  
   console.log("✅ Sync complete! 💅");
 }
 
