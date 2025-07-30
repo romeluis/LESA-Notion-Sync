@@ -305,7 +305,7 @@ function buildNotionMemberProperties(member) {
       number: member.id
     },
     "First Name": {
-      rich_text: [
+      title: [
         {
           type: "text",
           text: {
@@ -438,6 +438,11 @@ function checkIfMemberNeedsUpdate(mysqlMember, notionPage) {
     return prop?.rich_text?.[0]?.text?.content || "";
   };
   
+  // Helper to safely get text content from title property
+  const getTitleContent = (prop) => {
+    return prop?.title?.[0]?.text?.content || "";
+  };
+  
   // Helper to safely get select name
   const getSelectName = (prop) => {
     return prop?.select?.name || "";
@@ -452,7 +457,7 @@ function checkIfMemberNeedsUpdate(mysqlMember, notionPage) {
   
   // Compare each field
   const checks = [
-    getRichTextContent(props["First Name"]) !== (mysqlMember.given_name || ""),
+    getTitleContent(props["First Name"]) !== (mysqlMember.given_name || ""),
     getRichTextContent(props["Last Name"]) !== (mysqlMember.surname_name || ""),
     getRichTextContent(props["Preferred Name"]) !== (mysqlMember.preferred_name || ""),
     (props["UofT Email"]?.email || "") !== (mysqlMember.uoft_email || ""),
