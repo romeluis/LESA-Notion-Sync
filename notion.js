@@ -199,12 +199,12 @@ export async function syncMembers() {
     
     console.log(`📄 Found ${notionMembers.length} members in Notion database`);
     
-    // 3. Create a map of existing Notion members by their ID for quick lookup
+    // 3. Create a map of existing Notion members by their Student ID for quick lookup
     const notionMemberMap = new Map();
     notionMembers.forEach(page => {
-      const mysqlId = page.properties.Id?.number;
-      if (mysqlId) {
-        notionMemberMap.set(mysqlId, page);
+      const studentId = page.properties["Student ID"]?.number;
+      if (studentId) {
+        notionMemberMap.set(studentId, page);
       }
     });
     
@@ -215,7 +215,7 @@ export async function syncMembers() {
     
     for (const member of mysqlMembers) {
       try {
-        const existingNotionPage = notionMemberMap.get(member.id);
+        const existingNotionPage = notionMemberMap.get(member.student_number);
         
         if (!existingNotionPage) {
           // New member - insert into Notion
@@ -232,7 +232,7 @@ export async function syncMembers() {
           }
         }
       } catch (error) {
-        console.error(`❌ Error processing member ${member.id}: ${error.message}`);
+        console.error(`❌ Error processing member ${member.id} (Student ID: ${member.student_number}): ${error.message}`);
         // Continue with other members even if one fails
         skippedCount++;
       }
@@ -254,7 +254,7 @@ export async function syncMembers() {
  */
 async function insertMemberToNotion(member) {
   try {
-    console.log(`🔍 Processing member ${member.id}: ${member.given_name} ${member.surname_name}`);
+    console.log(`🔍 Processing member ${member.id} (Student ID: ${member.student_number}): ${member.given_name} ${member.surname_name}`);
     console.log(`📅 Registration date: ${member.registration_date}`);
     console.log(`📅 Last update: ${member.last_update}`);
     
@@ -267,9 +267,9 @@ async function insertMemberToNotion(member) {
       properties
     });
     
-    console.log(`✅ Inserted member: ${member.given_name} ${member.surname_name} (ID: ${member.id})`);
+    console.log(`✅ Inserted member: ${member.given_name} ${member.surname_name} (Student ID: ${member.student_number}, MySQL ID: ${member.id})`);
   } catch (error) {
-    console.error(`❌ Failed to insert member ${member.id}:`, error.message);
+    console.error(`❌ Failed to insert member ${member.id} (Student ID: ${member.student_number}):`, error.message);
     throw error;
   }
 }
@@ -289,9 +289,9 @@ async function updateMemberInNotion(member, existingPage) {
       properties
     });
     
-    console.log(`🔄 Updated member: ${member.given_name} ${member.surname_name} (ID: ${member.id})`);
+    console.log(`🔄 Updated member: ${member.given_name} ${member.surname_name} (Student ID: ${member.student_number}, MySQL ID: ${member.id})`);
   } catch (error) {
-    console.error(`❌ Failed to update member ${member.id}:`, error.message);
+    console.error(`❌ Failed to update member ${member.id} (Student ID: ${member.student_number}):`, error.message);
     throw error;
   }
 }
@@ -384,7 +384,13 @@ function buildNotionMemberProperties(member) {
     };
   }
 
-  const lastUpdateDate = formatDateForNotion(member.last_update);
+  // For last_update, use registration_date if last_update is invalid/0
+  let lastUpdateDate = formatDateForNotion(member.last_update);
+  if (!lastUpdateDate && registrationDate) {
+    console.log(`Using registration date for last_update for member ${member.id}`);
+    lastUpdateDate = registrationDate;
+  }
+  
   if (lastUpdateDate) {
     properties["Last Update"] = {
       date: {
@@ -414,7 +420,17 @@ function formatDateForNotion(date) {
   if (date instanceof Date) {
     dateObj = date;
   } else if (typeof date === 'string') {
+    // Handle special cases like "0000-00-00 00:00:00" from MySQL
+    if (date.startsWith('0000-00-00') || date === '0') {
+      return null;
+    }
     dateObj = new Date(date);
+  } else if (typeof date === 'number') {
+    // Handle timestamp numbers, but 0 means no date
+    if (date === 0) {
+      return null;
+    }
+    dateObj = new Date(date * 1000); // Assuming Unix timestamp
   } else {
     console.warn(`Unexpected date type: ${typeof date}, value: ${date}`);
     return null;
@@ -468,9 +484,15 @@ function checkIfMemberNeedsUpdate(mysqlMember, notionPage) {
     getRichTextContent(props["Program"]) !== (mysqlMember.program || ""),
     getSelectName(props["Year of Study"]) !== (mysqlMember.year_of_study || ""),
     getRichTextContent(props["Nationality"]) !== (mysqlMember.country || ""),
-    getDateString(props["Date of Registration"]) !== (formatDateForNotion(mysqlMember.registration_date) || ""),
-    getDateString(props["Last Update"]) !== (formatDateForNotion(mysqlMember.last_update) || "")
+    getDateString(props["Date of Registration"]) !== (formatDateForNotion(mysqlMember.registration_date) || "")
   ];
+  
+  // Handle last_update comparison with fallback to registration_date
+  let expectedLastUpdate = formatDateForNotion(mysqlMember.last_update);
+  if (!expectedLastUpdate) {
+    expectedLastUpdate = formatDateForNotion(mysqlMember.registration_date) || "";
+  }
+  checks.push(getDateString(props["Last Update"]) !== expectedLastUpdate);
   
   return checks.some(check => check);
 }
@@ -478,16 +500,16 @@ function checkIfMemberNeedsUpdate(mysqlMember, notionPage) {
 /**
  * Test function to sync just one member for debugging
  */
-export async function testSyncSingleMember(memberId) {
+export async function testSyncSingleMember(studentId) {
   try {
-    console.log(`🧪 Testing sync for member ID: ${memberId}`);
+    console.log(`🧪 Testing sync for student ID: ${studentId}`);
     
     // Validate required environment variables
     if (!membersDatabaseId) {
       throw new Error("NOTION_MEMBERS_DB_ID environment variable is not set");
     }
     
-    // Get single member from MySQL
+    // Get single member from MySQL by student_number
     const { query } = await import("./database.js");
     const mysqlMembers = await query(
       `SELECT 
@@ -495,12 +517,12 @@ export async function testSyncSingleMember(memberId) {
         student_number, student_status, faculty, college, program, 
         year_of_study, country, registration_date, last_update
       FROM members 
-      WHERE id = ?`,
-      [memberId]
+      WHERE student_number = ?`,
+      [studentId]
     );
     
     if (mysqlMembers.length === 0) {
-      console.log(`❌ No member found with ID: ${memberId}`);
+      console.log(`❌ No member found with Student ID: ${studentId}`);
       return;
     }
     
@@ -511,9 +533,9 @@ export async function testSyncSingleMember(memberId) {
     const response = await notion.databases.query({
       database_id: membersDatabaseId,
       filter: {
-        property: "Id",
+        property: "Student ID",
         number: {
-          equals: memberId
+          equals: studentId
         }
       }
     });

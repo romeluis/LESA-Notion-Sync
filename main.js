@@ -28,9 +28,9 @@ runSync().catch(err => {
   console.error("🔥 Error in initial sync:", err);
 });
 
-// 2️⃣ Schedule hourly sync at minute 0
-const job = new CronJob("0 * * * *", () => {
-  console.log("⏰ Hourly sync triggered");
+// 2️⃣ Schedule sync every 10 minutes
+const job = new CronJob("*/10 * * * *", () => {
+  console.log("⏰ 10-minute sync triggered");
   runSync().catch(err => {
     console.error("🔥 Error in scheduled sync:", err);
   });
@@ -38,4 +38,4 @@ const job = new CronJob("0 * * * *", () => {
 
 // 3️⃣ Start the cron job
 job.start();
-console.log("✨ Scheduler started: syncing every hour on the hour");
+console.log("✨ Scheduler started: syncing every 10 minutes");
