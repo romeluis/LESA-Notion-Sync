@@ -90,11 +90,9 @@ export async function synthesizeEvents() {
   const price = page.properties.Cost.number ?? 0;
 
   // 🔟 Requires Registration & Registration Form (checkbox + url)
-  const requiresReg = page.properties['Requires Registration'].checkbox;
+  const requiresReg = page.properties['Requires Registration'].select?.name ?? 'No';
   const regUrl = page.properties['Registration Form'].url;
-  const link = requiresReg
-    ? (regUrl ?? '1')
-    : '0';
+  const link = requiresReg === 'No' ? '0' : (requiresReg === 'LESA Registration' ? '2' : (regUrl ?? '1'));
 
   // 1️⃣1️⃣ Calendar Invite Link (url)
   const calendarLink = page.properties['Calendar Invite Link'].url ?? 'NONE';
