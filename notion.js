@@ -479,29 +479,92 @@ function checkIfMemberNeedsUpdate(mysqlMember, notionPage) {
   const props = notionPage.properties;
   
   // Compare each field (excluding Id since we use Student ID as unique identifier)
-  const checks = [
-    getTitleContent(props["First Name"]) !== (mysqlMember.given_name || ""),
-    getRichTextContent(props["Last Name"]) !== (mysqlMember.surname_name || ""),
-    getRichTextContent(props["Preferred Name"]) !== (mysqlMember.preferred_name || ""),
-    (props["UofT Email"]?.email || "") !== (mysqlMember.uoft_email || ""),
-    // Note: We don't compare Student ID since it's our lookup key and should match
-    getSelectName(props["Student Status"]) !== (mysqlMember.student_status || ""),
-    getSelectName(props["Faculty"]) !== (mysqlMember.faculty || ""),
-    getSelectName(props["College/Campus"]) !== (mysqlMember.college || ""),
-    getRichTextContent(props["Program"]) !== (mysqlMember.program || ""),
-    getSelectName(props["Year of Study"]) !== (mysqlMember.year_of_study || ""),
-    getRichTextContent(props["Nationality"]) !== (mysqlMember.country || ""),
-    getDateString(props["Date of Registration"]) !== (formatDateForNotion(mysqlMember.registration_date) || "")
-  ];
+  const fieldChecks = {
+    firstName: getTitleContent(props["First Name"]) !== (mysqlMember.given_name || ""),
+    lastName: getRichTextContent(props["Last Name"]) !== (mysqlMember.surname_name || ""),
+    preferredName: getRichTextContent(props["Preferred Name"]) !== (mysqlMember.preferred_name || ""),
+    email: (props["UofT Email"]?.email || "") !== (mysqlMember.uoft_email || ""),
+    status: getSelectName(props["Student Status"]) !== (mysqlMember.student_status || ""),
+    faculty: getSelectName(props["Faculty"]) !== (mysqlMember.faculty || ""),
+    campus: getSelectName(props["College/Campus"]) !== (mysqlMember.college || ""),
+    program: getRichTextContent(props["Program"]) !== (mysqlMember.program || ""),
+    yearOfStudy: getSelectName(props["Year of Study"]) !== (mysqlMember.year_of_study || ""),
+    nationality: getRichTextContent(props["Nationality"]) !== (mysqlMember.country || ""),
+    registrationDate: getDateString(props["Date of Registration"]) !== (formatDateForNotion(mysqlMember.registration_date) || "")
+  };
   
   // Handle last_update comparison with fallback to registration_date
   let expectedLastUpdate = formatDateForNotion(mysqlMember.last_update);
   if (!expectedLastUpdate) {
     expectedLastUpdate = formatDateForNotion(mysqlMember.registration_date) || "";
   }
-  checks.push(getDateString(props["Last Update"]) !== expectedLastUpdate);
+  fieldChecks.lastUpdate = getDateString(props["Last Update"]) !== expectedLastUpdate;
   
-  return checks.some(check => check);
+  // Check if any field needs updating
+  const needsUpdate = Object.values(fieldChecks).some(check => check);
+  
+  // Debug logging for members that need updates
+  if (needsUpdate) {
+    console.log(`🔍 Member ${mysqlMember.student_number} needs update. Changed fields:`);
+    Object.entries(fieldChecks).forEach(([field, hasChanged]) => {
+      if (hasChanged) {
+        let notionValue, mysqlValue;
+        switch(field) {
+          case 'firstName':
+            notionValue = getTitleContent(props["First Name"]);
+            mysqlValue = mysqlMember.given_name || "";
+            break;
+          case 'lastName':
+            notionValue = getRichTextContent(props["Last Name"]);
+            mysqlValue = mysqlMember.surname_name || "";
+            break;
+          case 'preferredName':
+            notionValue = getRichTextContent(props["Preferred Name"]);
+            mysqlValue = mysqlMember.preferred_name || "";
+            break;
+          case 'email':
+            notionValue = props["UofT Email"]?.email || "";
+            mysqlValue = mysqlMember.uoft_email || "";
+            break;
+          case 'status':
+            notionValue = getSelectName(props["Student Status"]);
+            mysqlValue = mysqlMember.student_status || "";
+            break;
+          case 'faculty':
+            notionValue = getSelectName(props["Faculty"]);
+            mysqlValue = mysqlMember.faculty || "";
+            break;
+          case 'campus':
+            notionValue = getSelectName(props["College/Campus"]);
+            mysqlValue = mysqlMember.college || "";
+            break;
+          case 'program':
+            notionValue = getRichTextContent(props["Program"]);
+            mysqlValue = mysqlMember.program || "";
+            break;
+          case 'yearOfStudy':
+            notionValue = getSelectName(props["Year of Study"]);
+            mysqlValue = mysqlMember.year_of_study || "";
+            break;
+          case 'nationality':
+            notionValue = getRichTextContent(props["Nationality"]);
+            mysqlValue = mysqlMember.country || "";
+            break;
+          case 'registrationDate':
+            notionValue = getDateString(props["Date of Registration"]);
+            mysqlValue = formatDateForNotion(mysqlMember.registration_date) || "";
+            break;
+          case 'lastUpdate':
+            notionValue = getDateString(props["Last Update"]);
+            mysqlValue = expectedLastUpdate;
+            break;
+        }
+        console.log(`   ${field}: Notion="${notionValue}" vs MySQL="${mysqlValue}"`);
+      }
+    });
+  }
+  
+  return needsUpdate;
 }
 
 /**
