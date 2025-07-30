@@ -114,3 +114,45 @@ export async function getAllMembers() {
     throw err;
   }
 }
+
+/**
+ * Gets all event registrations from the MySQL database
+ * @returns {Promise<Array>} Array of registration objects with event_id and student_id
+ */
+export async function getAllEventRegistrations() {
+  try {
+    const registrations = await query(
+      `SELECT event_id, student_id 
+       FROM event_registration 
+       ORDER BY student_id, event_id`
+    );
+    
+    console.log(`📋 Retrieved ${registrations.length} event registrations from MySQL`);
+    return registrations;
+  } catch (err) {
+    console.error("🔥 Error fetching event registrations from MySQL:", err);
+    throw err;
+  }
+}
+
+/**
+ * Gets event registrations for a specific student
+ * @param {number} studentId - The student ID to get registrations for
+ * @returns {Promise<Array>} Array of event IDs the student is registered for
+ */
+export async function getEventRegistrationsForStudent(studentId) {
+  try {
+    const registrations = await query(
+      `SELECT event_id 
+       FROM event_registration 
+       WHERE student_id = ?
+       ORDER BY event_id`,
+      [studentId]
+    );
+    
+    return registrations.map(reg => reg.event_id);
+  } catch (err) {
+    console.error(`🔥 Error fetching event registrations for student ${studentId}:`, err);
+    throw err;
+  }
+}

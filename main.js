@@ -2,7 +2,7 @@
 process.env.UNDICI_DISABLE_WASM = "1";
 
 import { CronJob } from "cron";
-import { synthesizeEvents, syncMembers } from "./notion.js";
+import { synthesizeEvents, syncMembers, syncMemberRegistrations } from "./notion.js";
 import { syncEvents } from "./database.js";
 
 /**
@@ -19,6 +19,10 @@ async function runSync() {
   // Sync members
   console.log("🔄 Now syncing members…");
   await syncMembers();
+  
+  // Sync member event registrations
+  console.log("🎯 Now syncing member event registrations…");
+  await syncMemberRegistrations();
   
   console.log("✅ Sync complete! 💅");
 }

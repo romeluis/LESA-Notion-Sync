@@ -651,3 +651,259 @@ export async function testSyncSingleMember(studentId) {
     throw error;
   }
 }
+
+/**
+ * Queries LESA database and syncs the events members are registered for
+ */
+export async function syncMemberRegistrations() {
+  try {
+    console.log("🎯 Starting event registrations sync...");
+    
+    // 1. Get all events from Notion to create mapping of event IDs to Notion page IDs
+    console.log("📊 Fetching events from Notion...");
+    const eventIdToPageIdMap = await getEventIdToPageIdMapping();
+    console.log(`📄 Found ${Object.keys(eventIdToPageIdMap).size} events in Notion`);
+    
+    // 2. Get all active event registrations from MySQL
+    console.log("📊 Fetching event registrations from MySQL...");
+    const { query } = await import("./database.js");
+    const registrations = await query(
+      `SELECT event_id, student_id 
+       FROM event_registration 
+       ORDER BY student_id, event_id`
+    );
+    console.log(`📋 Found ${registrations.length} event registrations in MySQL`);
+    
+    // 3. Group registrations by student_id
+    const registrationsByStudent = new Map();
+    registrations.forEach(reg => {
+      if (!registrationsByStudent.has(reg.student_id)) {
+        registrationsByStudent.set(reg.student_id, []);
+      }
+      registrationsByStudent.get(reg.student_id).push(reg.event_id);
+    });
+    
+    console.log(`👥 Found registrations for ${registrationsByStudent.size} unique students`);
+    
+    // 4. Get all members from Notion to update their registrations
+    console.log("📊 Fetching members from Notion...");
+    let notionMembers = [];
+    let cursor = undefined;
+    
+    do {
+      const response = await notion.databases.query({
+        database_id: membersDatabaseId,
+        start_cursor: cursor,
+        page_size: 100
+      });
+      notionMembers = notionMembers.concat(response.results);
+      cursor = response.has_more ? response.next_cursor : undefined;
+    } while (cursor);
+    
+    console.log(`📄 Found ${notionMembers.length} members in Notion`);
+    
+    // 5. Update each member's event registrations
+    let updateCount = 0;
+    let skippedCount = 0;
+    
+    for (const notionMember of notionMembers) {
+      try {
+        const studentId = notionMember.properties["Student ID"]?.number;
+        if (!studentId) {
+          console.warn(`⚠️ Member ${notionMember.id} has no Student ID, skipping`);
+          skippedCount++;
+          continue;
+        }
+        
+        // Get current event registrations for this student
+        const studentEventIds = registrationsByStudent.get(studentId) || [];
+        
+        // Convert event IDs to Notion page IDs
+        const eventPageIds = studentEventIds
+          .map(eventId => eventIdToPageIdMap[eventId])
+          .filter(pageId => pageId); // Remove undefined values for events not in Notion
+        
+        // Check if update is needed
+        const needsUpdate = await checkIfRegistrationsNeedUpdate(notionMember, eventPageIds);
+        
+        if (needsUpdate) {
+          await updateMemberRegistrations(notionMember, eventPageIds);
+          updateCount++;
+        } else {
+          skippedCount++;
+        }
+        
+      } catch (error) {
+        console.error(`❌ Error processing registrations for member ${notionMember.id}:`, error.message);
+        skippedCount++;
+      }
+    }
+    
+    console.log(`✅ Event registrations sync complete!`);
+    console.log(`   🔄 Updated: ${updateCount} members`);
+    console.log(`   ⏭️ Skipped: ${skippedCount} unchanged members`);
+    
+  } catch (error) {
+    console.error("🔥 Error syncing event registrations:", error);
+    throw error;
+  }
+}
+
+/**
+ * Helper function to get mapping of event IDs to Notion page IDs
+ */
+async function getEventIdToPageIdMapping() {
+  const eventMap = {};
+  let cursor = undefined;
+  
+  do {
+    const response = await notion.databases.query({
+      database_id: eventsDatabaseId,
+      start_cursor: cursor,
+      page_size: 100
+    });
+    
+    response.results.forEach(page => {
+      // Skip cancelled events
+      const statusName = page.properties['Event Status']?.status?.name;
+      if (statusName === 'Event Cancelled') return;
+      
+      // Get event ID (unique_id property)
+      const eventId = page.properties.id?.unique_id?.number;
+      if (eventId) {
+        eventMap[eventId] = page.id;
+      }
+    });
+    
+    cursor = response.has_more ? response.next_cursor : undefined;
+  } while (cursor);
+  
+  return eventMap;
+}
+
+/**
+ * Helper function to check if member's event registrations need updating
+ */
+async function checkIfRegistrationsNeedUpdate(notionMember, newEventPageIds) {
+  // Get current Events Registered relation property
+  const currentRelations = notionMember.properties["Events Registered"]?.relation || [];
+  const currentPageIds = new Set(currentRelations.map(rel => rel.id));
+  const newPageIdsSet = new Set(newEventPageIds);
+  
+  // Check if sets are different
+  if (currentPageIds.size !== newPageIdsSet.size) {
+    return true;
+  }
+  
+  // Check if all current IDs are in new set
+  for (const pageId of currentPageIds) {
+    if (!newPageIdsSet.has(pageId)) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Helper function to update member's event registrations in Notion
+ */
+async function updateMemberRegistrations(notionMember, eventPageIds) {
+  try {
+    const studentId = notionMember.properties["Student ID"]?.number;
+    
+    // Build the relation property
+    const eventsRegisteredProperty = {
+      relation: eventPageIds.map(pageId => ({ id: pageId }))
+    };
+    
+    await notion.pages.update({
+      page_id: notionMember.id,
+      properties: {
+        "Events Registered": eventsRegisteredProperty
+      }
+    });
+    
+    const firstName = notionMember.properties["First Name"]?.title?.[0]?.text?.content || "Unknown";
+    const lastName = notionMember.properties["Last Name"]?.rich_text?.[0]?.text?.content || "";
+    
+    console.log(`🎯 Updated registrations for: ${firstName} ${lastName} (Student ID: ${studentId}) - ${eventPageIds.length} events`);
+    
+  } catch (error) {
+    console.error(`❌ Failed to update registrations for member ${notionMember.id}:`, error.message);
+    throw error;
+  }
+}
+
+/**
+ * Test function to sync event registrations for just one member for debugging
+ */
+export async function testSyncSingleMemberRegistrations(studentId) {
+  try {
+    console.log(`🧪 Testing event registrations sync for student ID: ${studentId}`);
+    
+    // Validate required environment variables
+    if (!membersDatabaseId || !eventsDatabaseId) {
+      throw new Error("NOTION_MEMBERS_DB_ID and NOTION_EVENTS_DB_ID environment variables must be set");
+    }
+    
+    // 1. Get event ID to page ID mapping
+    console.log("📊 Fetching events from Notion...");
+    const eventIdToPageIdMap = await getEventIdToPageIdMapping();
+    console.log(`📄 Found ${Object.keys(eventIdToPageIdMap).size} events in Notion`);
+    
+    // 2. Get registrations for this specific student
+    const { getEventRegistrationsForStudent } = await import("./database.js");
+    const studentEventIds = await getEventRegistrationsForStudent(studentId);
+    console.log(`📋 Student ${studentId} is registered for ${studentEventIds.length} events: [${studentEventIds.join(', ')}]`);
+    
+    // 3. Convert event IDs to Notion page IDs
+    const eventPageIds = studentEventIds
+      .map(eventId => eventIdToPageIdMap[eventId])
+      .filter(pageId => pageId);
+    
+    console.log(`🎯 Found ${eventPageIds.length} matching events in Notion`);
+    
+    // 4. Find the member in Notion
+    const response = await notion.databases.query({
+      database_id: membersDatabaseId,
+      filter: {
+        property: "Student ID",
+        number: {
+          equals: studentId
+        }
+      }
+    });
+    
+    if (response.results.length === 0) {
+      console.log(`❌ No member found with Student ID: ${studentId} in Notion`);
+      return;
+    }
+    
+    const notionMember = response.results[0];
+    const firstName = notionMember.properties["First Name"]?.title?.[0]?.text?.content || "Unknown";
+    const lastName = notionMember.properties["Last Name"]?.rich_text?.[0]?.text?.content || "";
+    
+    console.log(`👤 Found member: ${firstName} ${lastName}`);
+    
+    // 5. Check current registrations
+    const currentRelations = notionMember.properties["Events Registered"]?.relation || [];
+    console.log(`📋 Current registrations in Notion: ${currentRelations.length} events`);
+    
+    // 6. Check if update is needed
+    const needsUpdate = await checkIfRegistrationsNeedUpdate(notionMember, eventPageIds);
+    
+    if (needsUpdate) {
+      console.log("✅ Update needed, updating member registrations...");
+      await updateMemberRegistrations(notionMember, eventPageIds);
+    } else {
+      console.log("⏭️ No update needed, registrations are already up to date");
+    }
+    
+    console.log("✅ Test complete!");
+    
+  } catch (error) {
+    console.error("🔥 Error in test registration sync:", error);
+    throw error;
+  }
+}
