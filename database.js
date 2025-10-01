@@ -30,6 +30,7 @@ export async function query(sql, params) {
 /**
  * Syncs an array of Event instances with your SQL table.
  * Uses upsert logic (INSERT ... ON DUPLICATE KEY UPDATE).
+ * Also deletes events from MySQL that are no longer in Notion.
  *
  * @param {Event[]} allEvents - array of Event objects
  */
@@ -37,6 +38,7 @@ export async function syncEvents(allEvents) {
   try {
     console.log(`⏳ Syncing ${allEvents.length} events to SQL…`);
 
+    // Step 1: Upsert all events from Notion
     for (const e of allEvents) {
       await query(
         `INSERT INTO events (
@@ -84,6 +86,27 @@ export async function syncEvents(allEvents) {
           e.isCpsifFunded
         ]
       );
+    }
+
+    // Step 2: Delete events from MySQL that are no longer in Notion
+    if (allEvents.length > 0) {
+      const notionEventIds = allEvents.map(e => e.id);
+      const placeholders = notionEventIds.map(() => '?').join(',');
+
+      const deleteResult = await query(
+        `DELETE FROM events WHERE id NOT IN (${placeholders})`,
+        notionEventIds
+      );
+
+      if (deleteResult.affectedRows > 0) {
+        console.log(`🗑️  Deleted ${deleteResult.affectedRows} events that are no longer in Notion`);
+      }
+    } else {
+      // If no events in Notion, delete all events from MySQL
+      const deleteResult = await query(`DELETE FROM events`);
+      if (deleteResult.affectedRows > 0) {
+        console.log(`🗑️  Deleted all ${deleteResult.affectedRows} events (Notion database is empty)`);
+      }
     }
 
     console.log(`🎉 Done syncing ${allEvents.length} events!`);
