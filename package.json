@@ -12,6 +12,7 @@
   "author": "Romel Luis Faife Cruz",
   "license": "ISC",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.988.0",
     "@notionhq/client": "^4.0.1",
     "cron": "^4.3.2",
     "mysql": "^2.18.1",

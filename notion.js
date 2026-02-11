@@ -1,13 +1,64 @@
 // notion.js
 import { Client } from "@notionhq/client";
+import { S3Client, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { Event } from "./event.js";
-import fetch from "node-fetch";  
+import fetch from "node-fetch";
 
 // 🔑 Make sure NOTION_TOKEN and NOTION_EVENTS_DB_ID are set as env vars on your server
 const notion = new Client({ auth: process.env.NOTION_TOKEN, fetch });
 const eventsDatabaseId = process.env.NOTION_EVENTS_DB_ID;
 const membersDatabaseId = process.env.NOTION_MEMBERS_DB_ID;
 const executivesDatabaseId = process.env.NOTION_EXECUTIVES_DB_ID;
+
+// Cloudflare R2 (S3-compatible)
+const r2 = new S3Client({
+  region: "auto",
+  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  },
+});
+const R2_BUCKET = process.env.R2_BUCKET_NAME;
+const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL; // e.g. https://pub-xxx.r2.dev
+
+/**
+ * Checks if a key already exists in R2.
+ */
+async function r2ObjectExists(key) {
+  try {
+    await r2.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Downloads an image from a URL and uploads it to Cloudflare R2.
+ * Skips upload if the key already exists (images rarely change).
+ * Returns the public R2 URL.
+ */
+async function uploadImageToR2(sourceUrl, key) {
+  if (await r2ObjectExists(key)) {
+    return `${R2_PUBLIC_URL}/${key}`;
+  }
+
+  const res = await fetch(sourceUrl);
+  if (!res.ok) throw new Error(`Failed to download image: ${res.status}`);
+
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const contentType = res.headers.get("content-type") || "image/png";
+
+  await r2.send(new PutObjectCommand({
+    Bucket: R2_BUCKET,
+    Key: key,
+    Body: buffer,
+    ContentType: contentType,
+  }));
+
+  return `${R2_PUBLIC_URL}/${key}`;
+}
 
 /**
  * Queries your Notion database and logs each page object.
@@ -932,7 +983,7 @@ export async function synthesizeExecutives() {
     console.log(`✨ Retrieved ${allPages.length} executives from Notion`);
 
     const allExecutives = [];
-    allPages.forEach(page => {
+    for (const page of allPages) {
       const props = page.properties;
 
       const id = props.id.unique_id.number;
@@ -949,15 +1000,26 @@ export async function synthesizeExecutives() {
       const song = props['Favourite Song'].rich_text[0]?.plain_text ?? '';
       const displayOrder = props['Order'].number ?? 0;
 
-      // Portrait: handle both Notion-hosted files and external URLs
+      // Portrait: download from Notion and upload to R2 for a stable URL
+      let image = null;
       const portraitFile = props['Portrait'].files[0];
-      const image = portraitFile?.file?.url ?? portraitFile?.external?.url ?? null;
+      const notionImageUrl = portraitFile?.file?.url ?? portraitFile?.external?.url;
+      if (notionImageUrl) {
+        try {
+          const ext = (portraitFile.file ? portraitFile.name : portraitFile.name)?.split('.').pop() || 'png';
+          const key = `executives/${id}.${ext}`;
+          image = await uploadImageToR2(notionImageUrl, key);
+          console.log(`📸 Uploaded portrait for ${fullName} → ${key}`);
+        } catch (err) {
+          console.error(`⚠️ Failed to upload portrait for ${fullName}:`, err.message);
+        }
+      }
 
       allExecutives.push({
         id, displayOrder, fullName, position, country, program,
         bio, food, song, image
       });
-    });
+    }
 
     return allExecutives;
   } catch (error) {
