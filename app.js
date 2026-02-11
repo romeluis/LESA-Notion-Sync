@@ -47,19 +47,6 @@ async function runSync() {
     if (global.__syncTracker) global.__syncTracker.reportStepError('registrations', err.message);
   }
 
-  // Sync executives
-  try {
-    console.log("👔 Now syncing executives…");
-    const executives = await synthesizeExecutives();
-    console.log(`👥 Got ${executives.length} executives, now syncing…`);
-    await syncExecutives(executives);
-    if (global.__syncTracker) global.__syncTracker.reportStepComplete('executives');
-  } catch (err) {
-    console.error("🔥 Error syncing executives:", err);
-    errors.push(`Executives: ${err.message}`);
-    if (global.__syncTracker) global.__syncTracker.reportStepError('executives', err.message);
-  }
-
   // Sync executive positions
   try {
     console.log("📋 Now syncing executive positions…");
@@ -82,19 +69,47 @@ async function runSync() {
   }
 }
 
-// 1️⃣ Run immediately on startup
+/**
+ * Syncs executives (portraits involve R2 uploads, so run less frequently).
+ */
+async function runExecSync() {
+  console.log("👔 Starting executives sync…");
+  try {
+    const executives = await synthesizeExecutives();
+    console.log(`👥 Got ${executives.length} executives, now syncing…`);
+    await syncExecutives(executives);
+    if (global.__syncTracker) global.__syncTracker.reportStepComplete('executives');
+    console.log("✅ Executives sync complete!");
+  } catch (err) {
+    console.error("🔥 Error syncing executives:", err);
+    if (global.__syncTracker) global.__syncTracker.reportStepError('executives', err.message);
+  }
+}
+
+// 1️⃣ Run everything immediately on startup
 runSync().catch(err => {
   console.error("🔥 Error in initial sync:", err);
 });
+runExecSync().catch(err => {
+  console.error("🔥 Error in initial exec sync:", err);
+});
 
-// 2️⃣ Schedule sync every 10 minutes
+// 2️⃣ Schedule main sync every 10 minutes
 const job = new CronJob("*/10 * * * *", () => {
   console.log("⏰ 10-minute sync triggered");
   runSync().catch(err => {
     console.error("🔥 Error in scheduled sync:", err);
   });
 });
-
-// 3️⃣ Start the cron job
 job.start();
-console.log("✨ Scheduler started: syncing every 10 minutes");
+
+// 3️⃣ Schedule executives sync weekly (Monday at midnight)
+const execJob = new CronJob("0 0 * * 1", () => {
+  console.log("⏰ Weekly executives sync triggered");
+  runExecSync().catch(err => {
+    console.error("🔥 Error in scheduled exec sync:", err);
+  });
+});
+execJob.start();
+
+console.log("✨ Scheduler started: main sync every 10 min, executives weekly");

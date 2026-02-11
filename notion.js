@@ -1,7 +1,6 @@
 // notion.js
 import { Client } from "@notionhq/client";
-import { S3Client, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
-import { createHash } from "crypto";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { Event } from "./event.js";
 import fetch from "node-fetch";
 
@@ -25,20 +24,8 @@ const R2_BUCKET = process.env.R2_BUCKET_NAME;
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL; // e.g. https://pub-xxx.r2.dev
 
 /**
- * Returns the ETag (MD5 hash) of an existing R2 object, or null if it doesn't exist.
- */
-async function getR2ETag(key) {
-  try {
-    const head = await r2.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: key }));
-    return head.ETag?.replace(/"/g, '') ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Downloads an image from a URL and uploads it to Cloudflare R2.
- * Compares MD5 hash against existing R2 object — skips upload if unchanged.
+ * Always overwrites to ensure changes are picked up.
  * Returns the public R2 URL.
  */
 async function uploadImageToR2(sourceUrl, key) {
@@ -47,12 +34,6 @@ async function uploadImageToR2(sourceUrl, key) {
 
   const buffer = Buffer.from(await res.arrayBuffer());
   const contentType = res.headers.get("content-type") || "image/png";
-  const md5 = createHash('md5').update(buffer).digest('hex');
-
-  const existingETag = await getR2ETag(key);
-  if (existingETag === md5) {
-    return `${R2_PUBLIC_URL}/${key}`;
-  }
 
   await r2.send(new PutObjectCommand({
     Bucket: R2_BUCKET,
