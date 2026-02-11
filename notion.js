@@ -1,6 +1,7 @@
 // notion.js
 import { Client } from "@notionhq/client";
 import { S3Client, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { createHash } from "crypto";
 import { Event } from "./event.js";
 import fetch from "node-fetch";
 
@@ -24,32 +25,34 @@ const R2_BUCKET = process.env.R2_BUCKET_NAME;
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL; // e.g. https://pub-xxx.r2.dev
 
 /**
- * Checks if a key already exists in R2.
+ * Returns the ETag (MD5 hash) of an existing R2 object, or null if it doesn't exist.
  */
-async function r2ObjectExists(key) {
+async function getR2ETag(key) {
   try {
-    await r2.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: key }));
-    return true;
+    const head = await r2.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+    return head.ETag?.replace(/"/g, '') ?? null;
   } catch {
-    return false;
+    return null;
   }
 }
 
 /**
  * Downloads an image from a URL and uploads it to Cloudflare R2.
- * Skips upload if the key already exists (images rarely change).
+ * Compares MD5 hash against existing R2 object — skips upload if unchanged.
  * Returns the public R2 URL.
  */
 async function uploadImageToR2(sourceUrl, key) {
-  if (await r2ObjectExists(key)) {
-    return `${R2_PUBLIC_URL}/${key}`;
-  }
-
   const res = await fetch(sourceUrl);
   if (!res.ok) throw new Error(`Failed to download image: ${res.status}`);
 
   const buffer = Buffer.from(await res.arrayBuffer());
   const contentType = res.headers.get("content-type") || "image/png";
+  const md5 = createHash('md5').update(buffer).digest('hex');
+
+  const existingETag = await getR2ETag(key);
+  if (existingETag === md5) {
+    return `${R2_PUBLIC_URL}/${key}`;
+  }
 
   await r2.send(new PutObjectCommand({
     Bucket: R2_BUCKET,
