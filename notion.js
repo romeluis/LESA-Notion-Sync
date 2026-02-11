@@ -155,6 +155,7 @@ export async function synthesizeEvents() {
     return allEvents;
   } catch (error) {
     console.error("🔥 Error fetching from Notion:", error);
+    throw error;
   }
 }
 
