@@ -25,11 +25,13 @@ async function runSync() {
   await syncMemberRegistrations();
   
   console.log("✅ Sync complete! 💅");
+  if (global.__syncTracker) global.__syncTracker.reportSyncComplete();
 }
 
 // 1️⃣ Run immediately on startup
 runSync().catch(err => {
   console.error("🔥 Error in initial sync:", err);
+  if (global.__syncTracker) global.__syncTracker.reportSyncError();
 });
 
 // 2️⃣ Schedule sync every 10 minutes
@@ -37,6 +39,7 @@ const job = new CronJob("*/10 * * * *", () => {
   console.log("⏰ 10-minute sync triggered");
   runSync().catch(err => {
     console.error("🔥 Error in scheduled sync:", err);
+    if (global.__syncTracker) global.__syncTracker.reportSyncError();
   });
 });
 
