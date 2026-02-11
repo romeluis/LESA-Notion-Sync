@@ -179,3 +179,72 @@ export async function getEventRegistrationsForStudent(studentId) {
     throw err;
   }
 }
+
+/**
+ * Syncs an array of executive objects with the `team` SQL table.
+ * Uses upsert logic (INSERT ... ON DUPLICATE KEY UPDATE).
+ * Also deletes executives from MySQL that are no longer in Notion.
+ *
+ * @param {Object[]} allExecutives - array of executive objects
+ */
+export async function syncExecutives(allExecutives) {
+  try {
+    console.log(`⏳ Syncing ${allExecutives.length} executives to SQL…`);
+
+    for (const e of allExecutives) {
+      await query(
+        `INSERT INTO team (
+          id, displayOrder, fullName, position, country, program,
+          bio, food, song, image
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          displayOrder = VALUES(displayOrder),
+          fullName     = VALUES(fullName),
+          position     = VALUES(position),
+          country      = VALUES(country),
+          program      = VALUES(program),
+          bio          = VALUES(bio),
+          food         = VALUES(food),
+          song         = VALUES(song),
+          image        = VALUES(image)`,
+        [
+          e.id,
+          e.displayOrder,
+          e.fullName,
+          e.position,
+          e.country,
+          e.program,
+          e.bio,
+          e.food,
+          e.song,
+          e.image
+        ]
+      );
+    }
+
+    // Delete executives from MySQL that are no longer in Notion
+    if (allExecutives.length > 0) {
+      const notionIds = allExecutives.map(e => e.id);
+      const placeholders = notionIds.map(() => '?').join(',');
+
+      const deleteResult = await query(
+        `DELETE FROM team WHERE id NOT IN (${placeholders})`,
+        notionIds
+      );
+
+      if (deleteResult.affectedRows > 0) {
+        console.log(`🗑️  Deleted ${deleteResult.affectedRows} executives no longer in Notion`);
+      }
+    } else {
+      const deleteResult = await query(`DELETE FROM team`);
+      if (deleteResult.affectedRows > 0) {
+        console.log(`🗑️  Deleted all ${deleteResult.affectedRows} executives (Notion database is empty)`);
+      }
+    }
+
+    console.log(`🎉 Done syncing ${allExecutives.length} executives!`);
+  } catch (err) {
+    console.error("🔥 Error syncing executives:", err);
+    throw err;
+  }
+}

@@ -7,6 +7,7 @@ import fetch from "node-fetch";
 const notion = new Client({ auth: process.env.NOTION_TOKEN, fetch });
 const eventsDatabaseId = process.env.NOTION_EVENTS_DB_ID;
 const membersDatabaseId = process.env.NOTION_MEMBERS_DB_ID;
+const executivesDatabaseId = process.env.NOTION_EXECUTIVES_DB_ID;
 
 /**
  * Queries your Notion database and logs each page object.
@@ -905,6 +906,62 @@ export async function testSyncSingleMemberRegistrations(studentId) {
     
   } catch (error) {
     console.error("🔥 Error in test registration sync:", error);
+    throw error;
+  }
+}
+
+/**
+ * Queries the Notion executives database and returns executive objects
+ * for upserting into the MySQL `team` table.
+ */
+export async function synthesizeExecutives() {
+  try {
+    let allPages = [];
+    let cursor = undefined;
+
+    do {
+      const response = await notion.databases.query({
+        database_id: executivesDatabaseId,
+        start_cursor: cursor,
+        page_size: 100
+      });
+      allPages = allPages.concat(response.results);
+      cursor = response.has_more ? response.next_cursor : undefined;
+    } while (cursor);
+
+    console.log(`✨ Retrieved ${allPages.length} executives from Notion`);
+
+    const allExecutives = [];
+    allPages.forEach(page => {
+      const props = page.properties;
+
+      const id = props.id.unique_id.number;
+
+      const firstName = props['First Name'].title[0]?.plain_text ?? '';
+      const lastName = props['Last Name'].rich_text[0]?.plain_text ?? '';
+      const fullName = `${firstName} ${lastName}`.trim();
+
+      const position = props['Member Status'].select?.name ?? '';
+      const country = props['Country Emoji'].rich_text[0]?.plain_text ?? '';
+      const program = props['Program'].rich_text[0]?.plain_text ?? '';
+      const bio = props['Website Description'].rich_text[0]?.plain_text ?? '';
+      const food = props['Favourite Food'].rich_text[0]?.plain_text ?? '';
+      const song = props['Favourite Song'].rich_text[0]?.plain_text ?? '';
+      const displayOrder = props['Order'].number ?? 0;
+
+      // Portrait: handle both Notion-hosted files and external URLs
+      const portraitFile = props['Portrait'].files[0];
+      const image = portraitFile?.file?.url ?? portraitFile?.external?.url ?? null;
+
+      allExecutives.push({
+        id, displayOrder, fullName, position, country, program,
+        bio, food, song, image
+      });
+    });
+
+    return allExecutives;
+  } catch (error) {
+    console.error("🔥 Error fetching executives from Notion:", error);
     throw error;
   }
 }
