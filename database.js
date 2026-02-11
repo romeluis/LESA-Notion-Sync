@@ -248,3 +248,70 @@ export async function syncExecutives(allExecutives) {
     throw err;
   }
 }
+
+/**
+ * Syncs an array of position objects with the `executive_positions` SQL table.
+ * Uses upsert logic (INSERT ... ON DUPLICATE KEY UPDATE).
+ * Also deletes positions from MySQL that are no longer in Notion.
+ *
+ * @param {Object[]} allPositions - array of position objects
+ */
+export async function syncPositions(allPositions) {
+  try {
+    console.log(`⏳ Syncing ${allPositions.length} positions to SQL…`);
+
+    for (const p of allPositions) {
+      await query(
+        `INSERT INTO executive_positions (
+          id, name, commitment, division, emoji, description,
+          meetingTime, startDay, startMonth, startYear,
+          endDay, endMonth, endYear, link
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          name        = VALUES(name),
+          commitment  = VALUES(commitment),
+          division    = VALUES(division),
+          emoji       = VALUES(emoji),
+          description = VALUES(description),
+          meetingTime = VALUES(meetingTime),
+          startDay    = VALUES(startDay),
+          startMonth  = VALUES(startMonth),
+          startYear   = VALUES(startYear),
+          endDay      = VALUES(endDay),
+          endMonth    = VALUES(endMonth),
+          endYear     = VALUES(endYear),
+          link        = VALUES(link)`,
+        [
+          p.id, p.name, p.commitment, p.division, p.emoji, p.description,
+          p.meetingTime, p.startDay, p.startMonth, p.startYear,
+          p.endDay, p.endMonth, p.endYear, p.link
+        ]
+      );
+    }
+
+    // Delete positions from MySQL that are no longer in Notion
+    if (allPositions.length > 0) {
+      const notionIds = allPositions.map(p => p.id);
+      const placeholders = notionIds.map(() => '?').join(',');
+
+      const deleteResult = await query(
+        `DELETE FROM executive_positions WHERE id NOT IN (${placeholders})`,
+        notionIds
+      );
+
+      if (deleteResult.affectedRows > 0) {
+        console.log(`🗑️  Deleted ${deleteResult.affectedRows} positions no longer in Notion`);
+      }
+    } else {
+      const deleteResult = await query(`DELETE FROM executive_positions`);
+      if (deleteResult.affectedRows > 0) {
+        console.log(`🗑️  Deleted all ${deleteResult.affectedRows} positions (Notion database is empty)`);
+      }
+    }
+
+    console.log(`🎉 Done syncing ${allPositions.length} positions!`);
+  } catch (err) {
+    console.error("🔥 Error syncing positions:", err);
+    throw err;
+  }
+}

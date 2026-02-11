@@ -8,7 +8,8 @@ const steps = {
     events: { status: 'pending', lastError: null },
     members: { status: 'pending', lastError: null },
     registrations: { status: 'pending', lastError: null },
-    executives: { status: 'pending', lastError: null }
+    executives: { status: 'pending', lastError: null },
+    positions: { status: 'pending', lastError: null }
 };
 
 // Expose functions so app.js can report sync status
@@ -109,6 +110,10 @@ const server = http.createServer((req, res) => {
     <div class="step">
       <div class="step-header"><span class="label">Executives</span>${stepBadge('executives')}</div>
       ${stepError('executives')}
+    </div>
+    <div class="step">
+      <div class="step-header"><span class="label">Positions</span>${stepBadge('positions')}</div>
+      ${stepError('positions')}
     </div>
   </div>
 </body></html>`);

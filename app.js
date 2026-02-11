@@ -2,8 +2,8 @@
 process.env.UNDICI_DISABLE_WASM = "1";
 
 import { CronJob } from "cron";
-import { synthesizeEvents, syncMembers, syncMemberRegistrations, synthesizeExecutives } from "./notion.js";
-import { syncEvents, syncExecutives } from "./database.js";
+import { synthesizeEvents, syncMembers, syncMemberRegistrations, synthesizeExecutives, synthesizePositions } from "./notion.js";
+import { syncEvents, syncExecutives, syncPositions } from "./database.js";
 
 /**
  * Runs one full sync: fetch from Notion, then upsert into MySQL.
@@ -58,6 +58,19 @@ async function runSync() {
     console.error("🔥 Error syncing executives:", err);
     errors.push(`Executives: ${err.message}`);
     if (global.__syncTracker) global.__syncTracker.reportStepError('executives', err.message);
+  }
+
+  // Sync executive positions
+  try {
+    console.log("📋 Now syncing executive positions…");
+    const positions = await synthesizePositions();
+    console.log(`📋 Got ${positions.length} positions, now syncing…`);
+    await syncPositions(positions);
+    if (global.__syncTracker) global.__syncTracker.reportStepComplete('positions');
+  } catch (err) {
+    console.error("🔥 Error syncing positions:", err);
+    errors.push(`Positions: ${err.message}`);
+    if (global.__syncTracker) global.__syncTracker.reportStepError('positions', err.message);
   }
 
   if (errors.length > 0) {

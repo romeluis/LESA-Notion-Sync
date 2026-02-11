@@ -9,6 +9,7 @@ const notion = new Client({ auth: process.env.NOTION_TOKEN, fetch });
 const eventsDatabaseId = process.env.NOTION_EVENTS_DB_ID;
 const membersDatabaseId = process.env.NOTION_MEMBERS_DB_ID;
 const executivesDatabaseId = process.env.NOTION_EXECUTIVES_DB_ID;
+const positionsDatabaseId = process.env.NOTION_POSITIONS_DB_ID;
 
 // Cloudflare R2 (S3-compatible)
 const r2 = new S3Client({
@@ -1024,6 +1025,72 @@ export async function synthesizeExecutives() {
     return allExecutives;
   } catch (error) {
     console.error("🔥 Error fetching executives from Notion:", error);
+    throw error;
+  }
+}
+
+/**
+ * Queries the Notion executive positions database and returns position objects
+ * for upserting into the MySQL `executive_positions` table.
+ */
+export async function synthesizePositions() {
+  try {
+    let allPages = [];
+    let cursor = undefined;
+
+    do {
+      const response = await notion.databases.query({
+        database_id: positionsDatabaseId,
+        start_cursor: cursor,
+        page_size: 100
+      });
+      allPages = allPages.concat(response.results);
+      cursor = response.has_more ? response.next_cursor : undefined;
+    } while (cursor);
+
+    console.log(`✨ Retrieved ${allPages.length} positions from Notion`);
+
+    const allPositions = [];
+    allPages.forEach(page => {
+      const props = page.properties;
+
+      const id = props['ID'].unique_id.number;
+      const name = props['Name'].title[0]?.plain_text ?? '';
+      const commitment = props['Commitment'].select?.name ?? null;
+      const division = props['Division'].select?.name ?? null;
+      const emoji = props['Emoji'].rich_text[0]?.plain_text ?? null;
+      const description = props['Description'].rich_text[0]?.plain_text ?? null;
+      const meetingTime = props['Monthly Meeting Hours'].number ?? 2;
+      const link = props['Application Link'].url ?? '0';
+
+      // Parse Application Period dates
+      const dateProp = props['Application Period'].date;
+      let startDay = null, startMonth = null, startYear = null;
+      let endDay = null, endMonth = null, endYear = null;
+
+      if (dateProp?.start) {
+        const start = new Date(dateProp.start);
+        startDay = start.getUTCDate();
+        startMonth = start.getUTCMonth() + 1;
+        startYear = start.getUTCFullYear();
+      }
+      if (dateProp?.end) {
+        const end = new Date(dateProp.end);
+        endDay = end.getUTCDate();
+        endMonth = end.getUTCMonth() + 1;
+        endYear = end.getUTCFullYear();
+      }
+
+      allPositions.push({
+        id, name, commitment, division, emoji, description,
+        meetingTime, startDay, startMonth, startYear,
+        endDay, endMonth, endYear, link
+      });
+    });
+
+    return allPositions;
+  } catch (error) {
+    console.error("🔥 Error fetching positions from Notion:", error);
     throw error;
   }
 }
