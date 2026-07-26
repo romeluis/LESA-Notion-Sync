@@ -20,7 +20,7 @@ jobs:
     - name: Deploy to Namecheap
       uses: SamKirkland/FTP-Deploy-Action@v4.3.5
       with:
-        server: server329.web-hosting.com
+        server: server320.web-hosting.com
         username: lesaueqw
         password: ${{ secrets.FTP_PASSWORD }}
         protocol: ftps
